@@ -13,13 +13,3 @@ Investors buy the liquid xKNC token to  participate in Kyber staking rewards and
 
 ## To flatten contract
 - Run `truffle-flattener contracts/xKNC.sol`
-
-
-<style>
-    .logo {
-        margin: 10px 0px;
-        width: 120px;
-        height: auto;
-    }
-
-</style>
