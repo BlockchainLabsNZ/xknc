@@ -1,4 +1,3 @@
-<img src="./xToken.png" class="logo margin">
 <img src="./xknc.png" class="logo">
 
 # xKNC: KyberDAO Pool Token
@@ -19,11 +18,8 @@ Investors buy the liquid xKNC token to  participate in Kyber staking rewards and
 <style>
     .logo {
         margin: 10px 0px;
-        width: 100px;
+        width: 120px;
         height: auto;
     }
 
-    .margin {
-        margin-right: 40px !important;
-    }
 </style>
