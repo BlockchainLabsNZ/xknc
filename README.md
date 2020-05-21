@@ -1,3 +1,6 @@
+<img src="./xToken.png" class="logo margin">
+<img src="./xknc.png" class="logo">
+
 # xKNC: KyberDAO Pool Token
 Investors buy the liquid xKNC token to  participate in Kyber staking rewards and governance without active management requirements.
 
@@ -11,3 +14,16 @@ Investors buy the liquid xKNC token to  participate in Kyber staking rewards and
 
 ## To flatten contract
 - Run `truffle-flattener contracts/xKNC.sol`
+
+
+<style>
+    .logo {
+        margin: 10px 0px;
+        width: 100px;
+        height: auto;
+    }
+
+    .margin {
+        margin-right: 40px !important;
+    }
+</style>
