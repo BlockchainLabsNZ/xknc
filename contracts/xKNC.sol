@@ -175,13 +175,14 @@ contract xKNC is ERC20, Whitelist, Pausable {
         kyberDao.claimReward(staker, epoch);
         _administerEthFee(getFundEthBalance());
         uint256 ethToSwap = getFundEthBalance();
+        uint ethFee = _administerEthFee(ethToSwap);
 
         (, uint256 slippageRate) = kyberProxy.getExpectedRate(
             ERC20(ETH_ADDRESS),
             ERC20(kyberTokenAddress),
-            ethToSwap
+            ethToSwap.sub(ethFee)
         );
-        kyberProxy.swapEtherToToken.value(ethToSwap)(
+        kyberProxy.swapEtherToToken.value(ethToSwap.sub(ethFee))(
             ERC20(kyberTokenAddress),
             slippageRate
         );
