@@ -1,15 +1,17 @@
 pragma solidity 0.5.15;
 
-import "./token/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20Detailed.sol";
+import "@openzeppelin/contracts/lifecycle/Pausable.sol";
+
 import "./util/Whitelist.sol";
-import "./util/SafeMath.sol";
-import "./util/Pausable.sol";
 import "./interface/IKyberNetworkProxy.sol";
 import "./interface/IKyberStaking.sol";
 import "./interface/IKyberDAO.sol";
 
 
-contract xKNC is ERC20, Whitelist, Pausable {
+contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
     using SafeMath for uint256;
 
     address private constant ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
@@ -31,7 +33,7 @@ contract xKNC is ERC20, Whitelist, Pausable {
 
     string public mandate;
 
-    constructor(string memory _mandate) public ERC20("xKNC", "xKNCa") {
+    constructor(string memory _mandate) public ERC20Detailed("xKNC", "xKNCa", 18) {
         mandate = _mandate;
     }
 
@@ -171,8 +173,8 @@ contract xKNC is ERC20, Whitelist, Pausable {
      * @dev Admin calls with relevant params
      * @dev ETH rewards swapped into KNC
      */
-    function claimReward(address staker, uint256 epoch) external onlyOwner {
-        kyberDao.claimReward(staker, epoch);
+    function claimReward(uint256 epoch) external onlyOwner {
+        kyberDao.claimReward(address(this), epoch);
         _administerEthFee(getFundEthBalance());
         uint256 ethToSwap = getFundEthBalance();
         uint ethFee = _administerEthFee(ethToSwap);
@@ -186,6 +188,7 @@ contract xKNC is ERC20, Whitelist, Pausable {
             ERC20(kyberTokenAddress),
             slippageRate
         );
+        _deposit(getAvailableKncBalance());
     }
 
     /*
