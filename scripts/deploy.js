@@ -23,7 +23,7 @@ async function main() {
   const KYBER_DAO_ADDRESS = "0x117971296b17A524411022353b2b7f9A132D3166";
 
 
-  await xknc.setFeeDivisor("286");
+  await xknc.setFeeDivisor("250");
   console.log('fee divisor set')
   await xknc.setKyberProxyAddress(KYBER_PROXY_ADDRESS);
   console.log('kyber proxy set')

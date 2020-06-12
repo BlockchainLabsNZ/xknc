@@ -20,7 +20,7 @@
     "ethers": "^4.0.47"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^2.5.0",
+    "@openzeppelin/contracts": "2.5.0",
     "dotenv": "^8.2.0",
     "prettier": "^2.0.5",
     "prettier-plugin-solidity": "^1.0.0-alpha.49"
