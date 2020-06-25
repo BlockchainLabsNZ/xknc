@@ -5,6 +5,8 @@ describe('xKNC', () => {
   const provider = waffle.provider
   const [wallet, user] = provider.getWallets()
 
+  const ETH_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
+
   let xknc, knc, kyberProxy, kyberStaking, kyberDao
 
   before(async () => {
@@ -36,7 +38,11 @@ describe('xKNC', () => {
     kyberDao = await KyberDao.deploy()
     await kyberDao.deployed()
 
-    const tx1 = { to: kyberDao.address, value: utils.parseEther('0.1') }
+    const KyberFeeHandler = await ethers.getContractFactory('MockKyberFeeHandler')
+    kyberFeeHandler = await KyberFeeHandler.deploy()
+    await kyberFeeHandler.deployed()
+
+    const tx1 = { to: kyberFeeHandler.address, value: utils.parseEther('0.1') }
     await wallet.sendTransaction(tx1)
   })
 
@@ -64,6 +70,11 @@ describe('xKNC', () => {
     it('should set the kyber dao address', async () => {
       await xknc.setKyberDaoAddress(kyberDao.address)
       assert.isOk('Kyber dao address set')
+    })
+
+    it('should set a kyber fee handler address', async () => {
+      await xknc.addKyberFeeHandlerAddress(kyberFeeHandler.address, ETH_ADDRESS)
+      assert.isOk('Kyber fee handler address set')
     })
 
     it('should approve the staking contract to spend knc', async () => {
@@ -149,13 +160,13 @@ describe('xKNC', () => {
 
     it('should claim ETH reward and convert to KNC', async () => {
       const stakedBalBefore = await xknc.getFundKncBalance()
-      await xknc.claimReward(1)
+      await xknc.claimReward(1, [0], [100])
       const stakedBalAfter = await xknc.getFundKncBalance()
       assert.isAbove(stakedBalAfter, stakedBalBefore)
     })
 
     it('should not be able to claim if called from non-owner', async () => {
-      await expect(xknc.connect(user).claimReward(1)).to.be.reverted
+      await expect(xknc.connect(user).claimReward(1, [0], [100])).to.be.reverted
     })
   })
 })
