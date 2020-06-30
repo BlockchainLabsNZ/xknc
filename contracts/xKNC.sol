@@ -195,6 +195,7 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
 
     /*
      * @notice Claim reward from previous epoch
+     * @notice All fee handlers should be called at once
      * @dev Admin calls with relevant params
      * @dev ETH/other asset rewards swapped into KNC
      * @param epoch - KyberDAO epoch
@@ -212,6 +213,8 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
             feeHandlerIndices.length == maxAmountsToSell.length,
             "Arrays must be equal length"
         );
+        require(maxAmountsToSell.length == minRates.length, "Arrays must be equal length");
+
         for (uint256 i = 0; i < feeHandlerIndices.length; i++) {
             kyberFeeHandlers[i].claimStakerReward(address(this), epoch);
 
@@ -368,7 +371,7 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
      * @param Address of KyberFeeHandler contract
      * @param Address of underlying rewards token
      */
-    function addKyberFeeHandlerAddress(
+    function addKyberFeeHandler(
         address _kyberfeeHandlerAddress,
         address _tokenAddress
     ) external onlyOwner {
