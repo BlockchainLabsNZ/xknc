@@ -33,6 +33,13 @@ contract MockKyberNetworkProxy {
     }
 
 
+    // swap tokem to knc
+    // must send knc to contract first
+    function swapTokenToToken(ERC20 src, uint srcAmount, ERC20 dest, uint minRate) external returns(uint) {
+        uint kncToSend = 1000000000;
+        IERC20(kncAddress).transfer(msg.sender, kncToSend);
+    }
+
     function setKncAddress(address _kncAddress) public {
         kncAddress = _kncAddress;
     }
