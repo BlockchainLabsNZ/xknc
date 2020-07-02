@@ -43,6 +43,8 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
 
     string public mandate;
 
+    mapping(address => bool) fallbackAllowedAddress;
+
     event MintWithEth(
         address indexed user,
         uint256 ethPayable,
@@ -80,6 +82,8 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
         kyberProxy = IKyberNetworkProxy(_kyberProxyAddress);
         knc = IERC20(_kyberTokenAddress);
         kyberDao = IKyberDAO(_kyberDaoAddress);
+
+        _addFallbackAllowedAddress(_kyberProxyAddress);
     }
 
     /*
@@ -90,7 +94,9 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
      */
     function _mint(uint256 minRate) external payable whenNotPaused {
         require(msg.value > 0, "Must send eth with tx");
-        uint256 fee = _administerEthFee(FeeTypes.MINT);
+        // ethBalBefore checked in case of eth still waiting for exch to KNC
+        uint256 ethBalBefore = getFundEthBalance().sub(msg.value);
+        uint256 fee = _administerEthFee(FeeTypes.MINT, ethBalBefore);
 
         uint256 ethValueForKnc = msg.value.sub(fee);
         uint256 kncBalanceBefore = getFundKncBalance();
@@ -98,7 +104,7 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
         _swapEtherToToken(address(knc), ethValueForKnc, minRate);
         _deposit(getAvailableKncBalance());
 
-        uint256 mintAmount = calculateMintAmount(kncBalanceBefore);
+        uint256 mintAmount = _calculateMintAmount(kncBalanceBefore);
 
         emit MintWithEth(msg.sender, msg.value, mintAmount, block.timestamp);
         return super._mint(msg.sender, mintAmount);
@@ -113,17 +119,14 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
      */
     function _mintWithKnc(uint256 kncAmount) external whenNotPaused {
         require(kncAmount > 0, "Must contribute KNC");
-        require(
-            knc.transferFrom(msg.sender, address(this), kncAmount),
-            "Insufficient balance/approval"
-        );
+        knc.safeTransferFrom(msg.sender, address(this), kncAmount);
 
         uint256 kncBalanceBefore = getFundKncBalance();
         _administerKncFee(kncAmount, FeeTypes.MINT);
 
         _deposit(getAvailableKncBalance());
 
-        uint256 mintAmount = calculateMintAmount(kncBalanceBefore);
+        uint256 mintAmount = _calculateMintAmount(kncBalanceBefore);
 
         emit MintWithKnc(msg.sender, kncAmount, mintAmount, block.timestamp);
         return super._mint(msg.sender, mintAmount);
@@ -155,16 +158,17 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
 
         if (redeemForKnc) {
             uint256 fee = _administerKncFee(proRataKnc, FeeTypes.BURN);
-            knc.transfer(msg.sender, proRataKnc.sub(fee));
+            knc.safeTransfer(msg.sender, proRataKnc.sub(fee));
         } else {
-            // safeguard to not overcompensate _burn sender in case eth was sent erringly to contract
+            // safeguard to not overcompensate _burn sender in case eth still awaiting for exch to KNC
             uint256 ethBalBefore = getFundEthBalance();
             kyberProxy.swapTokenToEther(
                 ERC20(address(knc)),
                 getAvailableKncBalance(),
                 minRate
             );
-            _administerEthFee(FeeTypes.BURN);
+
+            _administerEthFee(FeeTypes.BURN, ethBalBefore);
 
             uint256 valToSend = getFundEthBalance().sub(ethBalBefore);
             (bool success, ) = msg.sender.call.value(valToSend)("");
@@ -178,8 +182,8 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
      * @notice Calculates proportional issuance 
         according to KNC contribution
      */
-    function calculateMintAmount(uint256 kncBalanceBefore)
-        internal
+    function _calculateMintAmount(uint256 kncBalanceBefore)
+        private
         view
         returns (uint256 mintAmount)
     {
@@ -242,12 +246,16 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
             "Arrays must be equal length"
         );
 
+        uint256 ethBalBefore = getFundEthBalance();
         for (uint256 i = 0; i < feeHandlerIndices.length; i++) {
             kyberFeeHandlers[i].claimStakerReward(address(this), epoch);
 
             if (kyberFeeTokens[i] == ETH_ADDRESS) {
-                emit EthRewardClaimed(getFundEthBalance(), block.timestamp);
-                _administerEthFee(FeeTypes.CLAIM);
+                emit EthRewardClaimed(
+                    getFundEthBalance().sub(ethBalBefore),
+                    block.timestamp
+                );
+                _administerEthFee(FeeTypes.CLAIM, ethBalBefore);
             } else {
                 uint256 tokenBal = IERC20(kyberFeeTokens[i]).balanceOf(
                     address(this)
@@ -378,12 +386,15 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
         return knc.balanceOf(address(this)).sub(withdrawableKncFees);
     }
 
-    function _administerEthFee(FeeTypes _type) private returns (uint256 fee) {
+    function _administerEthFee(FeeTypes _type, uint256 ethBalBefore)
+        private
+        returns (uint256 fee)
+    {
         if (!isWhitelisted(msg.sender)) {
             uint256 feeRate = _getFeeRate(_type);
             if (feeRate == 0) return 0;
 
-            fee = getFundEthBalance().div(feeRate);
+            fee = (getFundEthBalance().sub(ethBalBefore)).div(feeRate);
             withdrawableEthFees = withdrawableEthFees.add(fee);
         }
     }
@@ -421,6 +432,8 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
 
         if (_tokenAddress != ETH_ADDRESS) {
             _approveKyberProxyContract(_tokenAddress, false);
+        } else {
+            _addFallbackAllowedAddress(_kyberfeeHandlerAddress);
         }
     }
 
@@ -485,16 +498,28 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
         withdrawableEthFees = 0;
         withdrawableKncFees = 0;
 
-        // address payable wallet = address(uint160(owner()));
         (bool success, ) = msg.sender.call.value(ethFees)("");
         require(success, "Burn transfer failed");
 
-        knc.transfer(owner(), kncFees);
+        knc.safeTransfer(owner(), kncFees);
         emit FeeWithdraw(ethFees, kncFees, block.timestamp);
+    }
+
+    function addFallbackAllowedAddress(address _address) external onlyOwner {
+        _addFallbackAllowedAddress(_address);
+    }
+
+    function _addFallbackAllowedAddress(address _address) private {
+        fallbackAllowedAddress[_address] = true;
     }
 
     /*
      * @notice Fallback to accommodate claimRewards function
      */
-    function() external payable {}
+    function() external payable {
+        require(
+            fallbackAllowedAddress[msg.sender],
+            "Only approved address can use fallback"
+        );
+    }
 }

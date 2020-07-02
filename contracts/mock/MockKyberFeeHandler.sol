@@ -6,7 +6,7 @@ contract MockKyberFeeHandler {
 
     function claimStakerReward(address _address, uint _epoch) external returns(uint ethBal) {
         ethBal = address(this).balance;
-        msg.sender.transfer(ethBal);
+        msg.sender.call.value(ethBal);
     }
 
     function() external payable {
