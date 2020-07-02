@@ -168,7 +168,7 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
 
             uint256 valToSend = getFundEthBalance().sub(ethBalBefore);
             (bool success, ) = msg.sender.call.value(valToSend)("");
-            require(success, "Rebate transfer failed");
+            require(success, "Burn transfer failed");
         }
 
         emit Burn(msg.sender, redeemForKnc, tokensToRedeem, block.timestamp);
@@ -487,7 +487,7 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
 
         // address payable wallet = address(uint160(owner()));
         (bool success, ) = msg.sender.call.value(ethFees)("");
-        require(success, "Rebate transfer failed");
+        require(success, "Burn transfer failed");
 
         knc.transfer(owner(), kncFees);
         emit FeeWithdraw(ethFees, kncFees, block.timestamp);
