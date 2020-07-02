@@ -23,12 +23,17 @@ describe('xKNC', () => {
     await knc.deployed()
     console.log('knc address', knc.address)
 
+    const KyberDao = await ethers.getContractFactory('MockKyberDAO')
+    kyberDao = await KyberDao.deploy()
+    await kyberDao.deployed()
+
     const xKNC = await ethers.getContractFactory('xKNC')
     xknc = await xKNC.deploy(
       "Votes in stakers' interests",
       kyberStaking.address,
       kyberProxy.address,
       knc.address,
+      kyberDao.address
     )
     await xknc.deployed()
     console.log('xKNC address:', xknc.address)
@@ -38,10 +43,6 @@ describe('xKNC', () => {
 
     await kyberStaking.setKncAddress(knc.address)
     await knc.transfer(kyberStaking.address, utils.parseEther('5'))
-
-    const KyberDao = await ethers.getContractFactory('MockKyberDAO')
-    kyberDao = await KyberDao.deploy()
-    await kyberDao.deployed()
 
     const MockToken = await ethers.getContractFactory('MockToken')
     mockToken = await MockToken.deploy()
@@ -68,11 +69,6 @@ describe('xKNC', () => {
     it('should set the fee divisors', async () => {
       await xknc.setFeeDivisors(['0', '500', '100'])
       assert.isOk('Fee set')
-    })
-
-    it('should set the kyber dao address', async () => {
-      await xknc.setKyberDaoAddress(kyberDao.address)
-      assert.isOk('Kyber dao address set')
     })
 
     it('should set a kyber fee handler address', async () => {

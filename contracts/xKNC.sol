@@ -2,6 +2,7 @@ pragma solidity 0.5.15;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20Detailed.sol";
 import "@openzeppelin/contracts/lifecycle/Pausable.sol";
 
@@ -14,6 +15,7 @@ import "./interface/IKyberFeeHandler.sol";
 
 contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
     using SafeMath for uint256;
+    using SafeERC20 for IERC20;
 
     address private constant ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
@@ -29,7 +31,7 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
     uint256 constant MAX_UINT = 2**256 - 1;
     uint256 constant INITIAL_SUPPLY_MULTIPLIER = 10;
 
-    uint256[] private feeDivisors;
+    uint256[] public feeDivisors;
     uint256 private withdrawableEthFees;
     uint256 private withdrawableKncFees;
 
@@ -54,6 +56,9 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
         uint256 timestamp
     );
     event FeeWithdraw(uint256 ethAmount, uint256 kncAmount, uint256 timestamp);
+    event FeeDivisorsSet(uint256[] divisors);
+    event EthRewardClaimed(uint256 amount, uint256 timestamp);
+    event TokenRewardClaimed(uint256 amount, uint256 timestamp);
 
     enum FeeTypes {MINT, BURN, CLAIM}
 
@@ -61,18 +66,21 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
         string memory _mandate,
         address _kyberStakingAddress,
         address _kyberProxyAddress,
-        address _kyberTokenAddress
+        address _kyberTokenAddress,
+        address _kyberDaoAddress
     ) public ERC20Detailed("xKNC", "xKNCa", 18) {
         mandate = _mandate;
         kyberStaking = IKyberStaking(_kyberStakingAddress);
         kyberProxy = IKyberNetworkProxy(_kyberProxyAddress);
         knc = IERC20(_kyberTokenAddress);
+        kyberDao = IKyberDAO(_kyberDaoAddress);
     }
 
     /*
      * @notice Called by users buying with ETH
      * @dev Swaps ETH for KNC, deposits to Staking contract
      * @dev: Mints pro rata xKNC tokens
+     * @param: kyberProxy.getExpectedRate(eth => knc)
      */
     function _mint(uint256 minRate) external payable whenNotPaused {
         require(msg.value > 0, "Must send eth with tx");
@@ -95,6 +103,7 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
      * @notice Users must submit ERC20 approval before calling
      * @dev Deposits to Staking contract
      * @dev: Mints pro rata xKNC tokens
+     * @param: Number of KNC to contribue
      */
     function _mintWithKnc(uint256 kncAmount) external whenNotPaused {
         require(kncAmount > 0, "Must contribute KNC");
@@ -116,10 +125,11 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
 
     /*
      * @notice Called by users burning their xKNC
-     * @param tokensToRedeem
-     * @param redeemForKnc bool: if true, redeem for KNC; otherwise ETH
      * @dev Calculates pro rata KNC and redeems from Staking contract
      * @dev: Exchanges for ETH if necessary and pays out to caller
+     * @param tokensToRedeem
+     * @param redeemForKnc bool: if true, redeem for KNC; otherwise ETH
+     * @param kyberProxy.getExpectedRate(knc => eth)
      */
     function _burn(
         uint256 tokensToRedeem,
@@ -141,13 +151,15 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
             uint256 fee = _administerKncFee(proRataKnc, FeeTypes.BURN);
             knc.transfer(msg.sender, proRataKnc.sub(fee));
         } else {
+            // safeguard to not overcompensate _burn sender in case eth was sent erringly to contract
+            uint ethBalBefore = getFundEthBalance(); 
             kyberProxy.swapTokenToEther(
                 ERC20(address(knc)),
                 getAvailableKncBalance(),
                 minRate
             );
             _administerEthFee(FeeTypes.BURN);
-            msg.sender.transfer(getFundEthBalance());
+            msg.sender.send(getFundEthBalance().sub(ethBalBefore));
         }
 
         emit Burn(msg.sender, redeemForKnc, tokensToRedeem, block.timestamp);
@@ -188,6 +200,8 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
     /*
      * @notice Vote on KyberDAO campaigns
      * @dev Admin calls with relevant params for each campaign in an epoch
+     * @param DAO campaign ID
+     * @param Choice of voting option
      */
     function vote(uint256 campaignID, uint256 option) external onlyOwner {
         kyberDao.vote(campaignID, option);
@@ -200,8 +214,9 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
      * @dev ETH/other asset rewards swapped into KNC
      * @param epoch - KyberDAO epoch
      * @param feeHandlerIndices - indices of feeHandler contract to claim from
-     * @param amountToSell - eth/erc20 balance in contract or less
-     * @param minRates - kyber.getExpectedRate
+     * @param maxAmountsToSell - sellAmount above which slippage would be too high
+     * and rewards would redirected into KNC in multiple trades
+     * @param minRates - kyberProxy.getExpectedRate(eth/token => knc)
      */
     function claimReward(
         uint256 epoch,
@@ -213,16 +228,29 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
             feeHandlerIndices.length == maxAmountsToSell.length,
             "Arrays must be equal length"
         );
-        require(maxAmountsToSell.length == minRates.length, "Arrays must be equal length");
+        require(
+            maxAmountsToSell.length == minRates.length,
+            "Arrays must be equal length"
+        );
 
         for (uint256 i = 0; i < feeHandlerIndices.length; i++) {
             kyberFeeHandlers[i].claimStakerReward(address(this), epoch);
 
             if (kyberFeeTokens[i] == ETH_ADDRESS) {
+                emit EthRewardClaimed(getFundEthBalance(), block.timestamp);
                 _administerEthFee(FeeTypes.CLAIM);
+            } else {
+                uint256 tokenBal = IERC20(kyberFeeTokens[i]).balanceOf(
+                    address(this)
+                );
+                emit TokenRewardClaimed(tokenBal, block.timestamp);
             }
 
-            _unwindRewards(feeHandlerIndices[i], maxAmountsToSell[i], minRates[i]);
+            _unwindRewards(
+                feeHandlerIndices[i],
+                maxAmountsToSell[i],
+                minRates[i]
+            );
         }
 
         _deposit(getAvailableKncBalance());
@@ -231,7 +259,9 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
     /*
      * @notice Called when rewards size is too big for the one trade executed by `claimReward`
      * @param feeHandlerIndices - index of feeHandler previously claimed from
-     * @param sellSharePercents - pct out of 100 of fees to sell (less than 100 if order would be too large)
+     * @param maxAmountsToSell - sellAmount above which slippage would be too high
+     * and rewards would redirected into KNC in multiple trades
+     * @param minRates - kyberProxy.getExpectedRate(eth/token => knc)
      */
     function unwindRewards(
         uint256[] calldata feeHandlerIndices,
@@ -239,7 +269,11 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
         uint256[] calldata minRates
     ) external onlyOwner {
         for (uint256 i = 0; i < feeHandlerIndices.length; i++) {
-            _unwindRewards(feeHandlerIndices[i], maxAmountsToSell[i], minRates[i]);
+            _unwindRewards(
+                feeHandlerIndices[i],
+                maxAmountsToSell[i],
+                minRates[i]
+            );
         }
 
         _deposit(getAvailableKncBalance());
@@ -255,10 +289,10 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
     ) private {
         address rewardTokenAddress = kyberFeeTokens[feeHandlerIndex];
 
-        uint amountToSell;
+        uint256 amountToSell;
         if (rewardTokenAddress == ETH_ADDRESS) {
-            uint ethBal = getFundEthBalance();
-            if(maxAmountToSell < ethBal){
+            uint256 ethBal = getFundEthBalance();
+            if (maxAmountToSell < ethBal) {
                 amountToSell = maxAmountToSell;
             } else {
                 amountToSell = ethBal;
@@ -266,8 +300,10 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
 
             _swapEtherToToken(address(knc), amountToSell, minRate);
         } else {
-            uint tokenBal = IERC20(rewardTokenAddress).balanceOf(address(this));
-            if(maxAmountToSell < tokenBal){
+            uint256 tokenBal = IERC20(rewardTokenAddress).balanceOf(
+                address(this)
+            );
+            if (maxAmountToSell < tokenBal) {
                 amountToSell = maxAmountToSell;
             } else {
                 amountToSell = tokenBal;
@@ -362,10 +398,6 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
         if (_type == FeeTypes.CLAIM) return feeDivisors[2];
     }
 
-    function setKyberDaoAddress(address _kyberDaoAddress) external onlyOwner {
-        kyberDao = IKyberDAO(_kyberDaoAddress);
-    }
-
     /*
      * @notice Called on initial deployment and on the addition of new fee handlers
      * @param Address of KyberFeeHandler contract
@@ -415,8 +447,9 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
 
     /*
      * @notice Called by admin on deployment
-     * @param feeDivisors[mint, burn, claim]: (1 / feeDivisor) = % fee on mint, burn, ETH claims
+     * @dev (1 / feeDivisor) = % fee on mint, burn, ETH claims
      * @dev ex: A feeDivisor of 334 suggests a fee of 0.3%
+     * @param feeDivisors[mint, burn, claim]:
      */
     function setFeeDivisors(uint256[] calldata _feeDivisors)
         external
@@ -430,8 +463,10 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
             _feeDivisors[1] >= 100,
             "Burn fee must be equal to or less than 1%"
         );
-        require(_feeDivisors[2] >= 2, "Claim fee must be less than 50%");
+        require(_feeDivisors[2] >= 10, "Claim fee must be less than 10%");
         feeDivisors = _feeDivisors;
+
+        emit FeeDivisorsSet(feeDivisors);
     }
 
     function withdrawFees() external onlyOwner {
@@ -440,7 +475,7 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
         withdrawableEthFees = 0;
         withdrawableKncFees = 0;
         address payable wallet = address(uint160(owner()));
-        wallet.transfer(ethFees);
+        wallet.send(ethFees);
         knc.transfer(owner(), kncFees);
         emit FeeWithdraw(ethFees, kncFees, block.timestamp);
     }
