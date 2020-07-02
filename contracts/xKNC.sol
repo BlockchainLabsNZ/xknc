@@ -13,10 +13,12 @@ import "./interface/IKyberStaking.sol";
 import "./interface/IKyberDAO.sol";
 import "./interface/IKyberFeeHandler.sol";
 
+
 /*
-* xKNC KyberDAO Pool Token
-* Communal Staking Pool with Stated Governance Position
-*/  
+ * xKNC KyberDAO Pool Token
+ * Communal Staking Pool with Stated Governance Position
+ */
+
 contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
@@ -156,7 +158,7 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
             knc.transfer(msg.sender, proRataKnc.sub(fee));
         } else {
             // safeguard to not overcompensate _burn sender in case eth was sent erringly to contract
-            uint ethBalBefore = getFundEthBalance(); 
+            uint256 ethBalBefore = getFundEthBalance();
             kyberProxy.swapTokenToEther(
                 ERC20(address(knc)),
                 getAvailableKncBalance(),
@@ -164,7 +166,7 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
             );
             _administerEthFee(FeeTypes.BURN);
 
-            uint valToSend = getFundEthBalance().sub(ethBalBefore);
+            uint256 valToSend = getFundEthBalance().sub(ethBalBefore);
             (bool success, ) = msg.sender.call.value(valToSend)("");
             require(success, "Rebate transfer failed");
         }
