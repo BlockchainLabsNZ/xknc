@@ -23,6 +23,7 @@ async function main() {
     KYBER_STAKING_ADDRESS,
     KYBER_PROXY_ADDRESS,
     KYBER_TOKEN_ADDRESS,
+    KYBER_DAO_ADDRESS
   )
 
   await xknc.deployed()
@@ -33,8 +34,6 @@ async function main() {
 
   await xknc.setFeeDivisors(['0', '500', '50'])
   console.log('fee divisor set')
-  await xknc.setKyberDaoAddress(KYBER_DAO_ADDRESS)
-  console.log('kyber dao set')
   await xknc.approveStakingContract(false);
   console.log('kyber staking contract approved')
   await xknc.approveKyberProxyContract(KYBER_TOKEN_ADDRESS, false);
