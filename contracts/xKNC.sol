@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20Detailed.sol";
 import "@openzeppelin/contracts/lifecycle/Pausable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import "./util/Whitelist.sol";
 import "./interface/IKyberNetworkProxy.sol";
@@ -12,8 +13,11 @@ import "./interface/IKyberStaking.sol";
 import "./interface/IKyberDAO.sol";
 import "./interface/IKyberFeeHandler.sol";
 
-
-contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
+/*
+* xKNC KyberDAO Pool Token
+* Communal Staking Pool with Stated Governance Position
+*/  
+contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
@@ -135,7 +139,7 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
         uint256 tokensToRedeem,
         bool redeemForKnc,
         uint256 minRate
-    ) external {
+    ) external nonReentrant {
         require(
             balanceOf(msg.sender) >= tokensToRedeem,
             "Insufficient balance"
@@ -159,7 +163,10 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
                 minRate
             );
             _administerEthFee(FeeTypes.BURN);
-            msg.sender.send(getFundEthBalance().sub(ethBalBefore));
+
+            uint valToSend = getFundEthBalance().sub(ethBalBefore);
+            (bool success, ) = msg.sender.call.value(valToSend)("");
+            require(success, "Rebate transfer failed");
         }
 
         emit Burn(msg.sender, redeemForKnc, tokensToRedeem, block.timestamp);
@@ -472,10 +479,14 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable {
     function withdrawFees() external onlyOwner {
         uint256 ethFees = withdrawableEthFees;
         uint256 kncFees = withdrawableKncFees;
+
         withdrawableEthFees = 0;
         withdrawableKncFees = 0;
-        address payable wallet = address(uint160(owner()));
-        wallet.send(ethFees);
+
+        // address payable wallet = address(uint160(owner()));
+        (bool success, ) = msg.sender.call.value(ethFees)("");
+        require(success, "Rebate transfer failed");
+
         knc.transfer(owner(), kncFees);
         emit FeeWithdraw(ethFees, kncFees, block.timestamp);
     }
