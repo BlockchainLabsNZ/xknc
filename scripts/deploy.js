@@ -32,7 +32,7 @@ async function main() {
   await xknc.addKyberFeeHandler(KYBER_FEE_HANDLER_ETH, ETH_ADDRESS)
   console.log('ETH fee handler added')
 
-  await xknc.setFeeDivisors(['0', '500', '50'])
+  await xknc.setFeeDivisors('0', '500', '50')
   console.log('fee divisor set')
   await xknc.approveStakingContract(false);
   console.log('kyber staking contract approved')
