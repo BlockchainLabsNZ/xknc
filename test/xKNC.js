@@ -67,7 +67,7 @@ describe('xKNC', () => {
 
   describe('xKNC: deployment', () => {
     it('should set the fee divisors', async () => {
-      await xknc.setFeeDivisors(['0', '500', '100'])
+      await xknc.setFeeDivisors('0', '500', '100')
       assert.isOk('Fee set')
     })
 
@@ -94,14 +94,14 @@ describe('xKNC', () => {
 
   describe('xKNC: minting with ETH', async () => {
     it('should issue xKNC tokens to the caller', async () => {
-      await xknc._mint(0, { value: utils.parseEther('0.01') })
+      await xknc.mint(0, { value: utils.parseEther('0.01') })
       const xkncBal = await xknc.balanceOf(wallet.address)
 
       assert.isAbove(xkncBal, 0, 'xKNC minted')
     })
 
     it('should result in staked KNC', async () => {
-      const stakedBal = await xknc.getFundKncBalance()
+      const stakedBal = await xknc.getFundKncBalanceTwei()
       assert.isAbove(stakedBal, 0, 'KNC staked')
     })
   })
@@ -109,18 +109,18 @@ describe('xKNC', () => {
   describe('xKNC: minting with KNC', async () => {
     let stakedBalBefore
     it('should issue xKNC tokens to the caller', async () => {
-      stakedBalBefore = await xknc.getFundKncBalance()
+      stakedBalBefore = await xknc.getFundKncBalanceTwei()
       const xkncBalBefore = await xknc.balanceOf(wallet.address)
       await knc.approve(xknc.address, utils.parseEther('10000'))
 
-      await xknc._mintWithKnc(utils.parseEther('0.01'))
+      await xknc.mintWithKnc(utils.parseEther('0.01'))
       const xkncBalAfter = await xknc.balanceOf(wallet.address)
 
       assert.isAbove(xkncBalAfter, xkncBalBefore, 'xKNC minted')
     })
 
     it('should result in staked KNC', async () => {
-      const stakedBalAfter = await xknc.getFundKncBalance()
+      const stakedBalAfter = await xknc.getFundKncBalanceTwei()
       assert.isAbove(stakedBalAfter, stakedBalBefore, 'KNC staked')
     })
   })
@@ -131,7 +131,7 @@ describe('xKNC', () => {
       const toBurn = totalSupply.div(utils.bigNumberify(5))
       const ethBalBefore = await provider.getBalance(wallet.address)
 
-      await xknc._burn(toBurn, false, 0)
+      await xknc.burn(toBurn, false, 0)
       const ethBalAfter = await provider.getBalance(wallet.address)
       assert.isAbove(ethBalAfter, ethBalBefore)
     })
@@ -141,7 +141,7 @@ describe('xKNC', () => {
       const toBurn = totalSupply.div(utils.bigNumberify(5))
       const kncBalBefore = await knc.balanceOf(wallet.address)
 
-      await xknc._burn(toBurn, true, 0)
+      await xknc.burn(toBurn, true, 0)
       const kncBalAfter = await knc.balanceOf(wallet.address)
       assert.isAbove(kncBalAfter, kncBalBefore)
     })
@@ -158,9 +158,9 @@ describe('xKNC', () => {
     })
 
     it('should claim ETH reward and convert to KNC', async () => {
-      const stakedBalBefore = await xknc.getFundKncBalance()
+      const stakedBalBefore = await xknc.getFundKncBalanceTwei()
       await xknc.claimReward(1, [0], [100000], [0])
-      const stakedBalAfter = await xknc.getFundKncBalance()
+      const stakedBalAfter = await xknc.getFundKncBalanceTwei()
       assert.isAbove(stakedBalAfter, stakedBalBefore)
     })
 
@@ -183,9 +183,9 @@ describe('xKNC', () => {
     })
 
     it('should be able to claim from the token fee handler contract', async () => {
-      const stakedBalBefore = await xknc.getFundKncBalance()
+      const stakedBalBefore = await xknc.getFundKncBalanceTwei()
       await xknc.claimReward(2, [1], [100000], [0])
-      const stakedBalAfter = await xknc.getFundKncBalance()
+      const stakedBalAfter = await xknc.getFundKncBalanceTwei()
       assert.isAbove(stakedBalAfter, stakedBalBefore)
     })
   })
