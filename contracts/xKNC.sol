@@ -25,11 +25,11 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
 
     address private constant ETH_ADDRESS = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
-    IERC20 private knc;
-    IKyberDAO private kyberDao;
-    IKyberStaking private kyberStaking;
-    IKyberNetworkProxy private kyberProxy;
-    IKyberFeeHandler[] private kyberFeeHandlers;
+    IERC20 public knc;
+    IKyberDAO public kyberDao;
+    IKyberStaking public kyberStaking;
+    IKyberNetworkProxy public kyberProxy;
+    IKyberFeeHandler[] public kyberFeeHandlers;
 
     address[] private kyberFeeTokens;
 
