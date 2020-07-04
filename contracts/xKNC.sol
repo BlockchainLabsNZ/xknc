@@ -187,6 +187,8 @@ contract xKNC is ERC20, ERC20Detailed, Whitelist, Pausable, ReentrancyGuard {
 
     /*
      * @notice Calculates proportional issuance according to KNC contribution
+     * @notice Fund starts at ratio of INITIAL_SUPPLY_MULTIPLIER/1 == xKNC supply/KNC balance
+     * and approaches 1/1 as rewards accrue in KNC
      * @param kncBalanceBefore used to determine ratio of incremental to current KNC 
      */
     function _calculateMintAmount(uint256 kncBalanceBefore)
